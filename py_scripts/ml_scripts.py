@@ -14,8 +14,6 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.svm import SVR
 from sklearn.metrics import r2_score, mean_squared_error
 
-import statsmodels.regression.linear_model as sm
-
 
 # Machine Learning functions
 def import_engineer_data(batch_import = False, folder_path = 'data/SPY.csv', weekday_feature = False, window = 1):
