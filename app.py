@@ -2,6 +2,7 @@
 # Dash App for Stock Price Predictor
 # Udacity Data Scientist Nanodegree
 import os
+import pickle
 
 import pandas as pd
 import numpy as np
@@ -22,8 +23,10 @@ import dash_bootstrap_components as dbc
 import dash_daq as daq
 from dash.dependencies import Input, Output
 
-#import plotly.graph_obj as go
-#import plotly.io as pio
+import plotly.graph_objects as go
+import plotly.io as pio
+
+from py_scripts.ml_scripts import import_data, preprocessing_data, import_engineer_data, split_scale_train_predict
 
 import datetime as dt
 import flask
@@ -33,7 +36,7 @@ import time
 # Styling
 external_stylesheets = [dbc.themes.BOOTSTRAP]    # 'https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css']
 
-#pio.templates.default = 'none'
+pio.templates.default = 'none'
 
 # Create Dash app
 app = dash.Dash(
@@ -65,11 +68,67 @@ regressors_scalers = {
 }
 
 
-# Import data
-ticker_list = []
+# Create ticker list
+ticker_filenames = {}
 for filename in os.listdir('data'):
     if filename.endswith('.csv'):
-        ticker_list.append(filename[:-4])
+        ticker_filenames[filename[:-4]] = 'data/' + filename
+        
+
+# Create prediction for per ticker and time window
+# Option 1: Import pre-compiled pickle data
+def get_window_pred_data(ticker):
+    '''
+    Function to import data for app from pre-compiled static pickle data.
+    Input:    ticker                  str; ticker of stock
+    Output:   window_pred_data        list of arrays containing ticker, regressor, window, y_pred, y_test, err (error), err_perc (error in %), y_pred_last
+              window_pred_data_ind    dictionary of indexes for regressors in window_pred_data
+    '''
+    with open('data/pickles/' + ticker + '.pkl', 'rb') as file:
+        window_pred_data = pickle.load(file)
+    
+    window_pred_data_ind = {}
+    for i in range(len(window_pred_data)):
+        if i > 0:
+            if window_pred_data[i][0][1] != window_pred_data[i-1][0][1]:
+                window_pred_data_ind[window_pred_data[i][0][1]] = i
+            else:
+                continue
+        else:
+            window_pred_data_ind[window_pred_data[i][0][1]] = i
+    
+    return window_pred_data, window_pred_data_ind
+
+# Option 2: Run and optimize model on data
+# Create static prediction data for each regressor, stock and window
+#def get_window_pred_data(ticker, regressor_scalers, windows):
+#    '''
+#    Function to create window_pred_data which consists of arrays of actual (test) prices, predicted prices and errors. This function calls other functions for
+#    importing and preprocessing data,
+#    training and optimizing models,
+#    predicting with the appropriate model.
+#    Input:  ticker                  str; ticker of stock
+#            regressor               str; model regressor
+#            regressor_scalers       dict; matching regressors with scaler and GridSearchCV parameters
+#    Output: window_pred_data        list of arrays containing ticker, regressor, window, y_pred, y_test, err (error), err_perc (error in %), y_pred_last
+#            window_pred_data_ind    dictionary of indexes for regressors in window_pred_data
+#    '''
+#    window_pred_data = []
+#    for window in windows:
+#            X, y, X_last = import_engineer_data(folder_path = ticker_filenames[ticker], window = window)
+#            y_pred, y_test, err, err_perc, mse, r2, adj_r2, y_pred_last = split_scale_train_predict(X, y, X_last, regressor = regressor, scaler = regressors_scalers[regressor][1])
+#            window_pred_data.append([[ticker, regressor, window, y_pred, y_test, err, err_perc, y_pred_last]])
+#    window_pred_data_ind = {}
+#    for i in range(len(window_pred_data)):
+#    if i > 0:
+#        if window_pred_data[i][0][1] != window_pred_data[i-1][0][1]:
+#            window_pred_data_ind[window_pred_data[i][0][1]] = i
+#        else:
+#            continue
+#    else:
+#        window_pred_data_ind[window_pred_data[i][0][1]] = i
+#    
+#    return window_pred_data, window_pred_data_ind
 
 
 # Create site layout and graphs
@@ -82,7 +141,7 @@ controls = dbc.Card(
         dcc.Dropdown(
             id='stock-dropdown',
             options = [
-                {'label': ticker, 'value': ticker} for ticker in ticker_list
+                {'label': ticker, 'value': ticker} for ticker in ticker_filenames
             ],
             value = 'SPY'
         )
@@ -102,10 +161,10 @@ controls = dbc.Card(
     ),
     dbc.FormGroup(
         [
-        dbc.Label('Show Error Histogram'),
+        dbc.Label('Show Error Information'),
         dbc.Col([
         daq.BooleanSwitch(
-            id = 'histogram-switch',
+            id = 'error-switch',
             on = 'True',
             color = 'lightgreen'),
             ], md = 4,)
@@ -120,8 +179,9 @@ app.layout = dbc.Container([
         dbc.Col([
             html.Div([
                 html.H1('Stock Price Predictor'),
-                html.H3("Udacity's Data Scientist Nanodegree Capstone Project"),
-                html.H3('FOR EDUCATIONAL PURPOSES ONLY - USE AT OWN RISK'),
+                html.H5("Udacity's Data Scientist Nanodegree Capstone Project"),
+                html.H5('DO NOT USE FOR INVESTMENT DECISIONS - for educational purposes only', className='text-muted'),
+                html.H5('created with Dash by Plotly', className='text-muted'),
                 html.Hr()
             ])
         ])
@@ -129,8 +189,8 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col(controls, md = 2),
         dbc.Col([
-            dcc.Graph(id = 'line_chart', config = {'modeBarButtonsToRemove': ['lasso2d']}),
-            dcc.Graph(id = 'histogram', config = {'modeBarButtonsToRemove': ['lasso2d']})
+            dcc.Graph(id = 'line_chart')#, config = {'modeBarButtonsToRemove': ['lasso2d']}),
+            #dcc.Graph(id = 'histogram', config = {'modeBarButtonsToRemove': ['lasso2d']})
             ], width = 'auto'
             )
         ], align = 'center')
@@ -138,7 +198,74 @@ app.layout = dbc.Container([
     )
 
 
+# Callbacks (Interactive inputs for graphs)
+@app.callback([
+        Output('line_chart', 'figure'),
+        #Output('histogram', 'figure')
+        ], [
+        Input('stock-dropdown', 'value'),
+        Input('regressor-dropdown', 'value'),
+        Input('error-switch', 'on')
+        ]
+        )
 
+
+# Graph Generation
+def update_graph(stock_dropdown, regressor_dropdown, on):
+    '''
+    Inputs:  stock_dropdown        str; filtered stock ticker
+             regressor_dropdown    str; filtered regressor
+             histogram_switch      bool; show/not show histogram
+    Outputs: line_chart            plotly figure for comparing actual vs. predicted prices
+             forecast_card         dash card showing predicted price for window
+             histogram             plotly figure showing prediction errors
+             error_card            dash card showing metrics about prediction errors
+    '''
+    # Filter data
+    # window_pred_data columns = ticker, regressor, window, y_pred, y_test, err, err_perc, y_pred_last, date_arr
+    window_pred_data, window_pred_data_ind = get_window_pred_data(stock_dropdown)
+    window = 0
+    idx = window_pred_data_ind[regressor_dropdown]
+    
+    y_test = window_pred_data[idx][0][4].tolist()
+    y_test = [element[0] for element in y_test]
+    
+    y_pred = window_pred_data[idx][0][3].tolist()
+    y_pred = [element[0] for element in y_pred]
+    
+    x_dates = window_pred_data[idx][0][8].tolist()
+    
+    err = window_pred_data[idx][0][5].tolist()
+    err = [element[0] for element in err]
+    
+    # Line Chart
+    line_chart = go.Figure()
+    line_chart.add_trace(go.Scatter(
+            x = x_dates,
+            y = y_test,
+            name = 'Actual Adj. Close Price',
+            mode = 'lines',
+            line = dict(color = 'green')))
+    
+    line_chart.add_trace(go.Scatter(
+            x = x_dates,
+            y = y_pred,
+            name = 'Predicted Adj. Close Price',
+            mode = 'lines',
+            line = dict(color = 'orange')))
+    
+    # Error-switch
+    if on == True:
+        line_chart.add_trace(go.Scatter(
+                x = x_dates,
+                y = err,
+                name = 'Error abs.',
+                mode = 'lines',
+                line = dict(color = 'red')))
+    
+    #line_chart.show()
+    
+    return [line_chart]
 '''
 # Import stock datasets
 df_MSFT = pd.read_csv('data/MSFT_5Y.csv')
