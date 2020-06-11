@@ -1,6 +1,9 @@
 #### Stock Price Predictor
 #### Create static data for Dash App
 
+# Run this script automatically on a daily basis to keep your Dash app up-to-date
+# Requirement to be added: Daily retrieval of actual stock data
+
 # Import libraries
 import os
 import pickle
@@ -48,12 +51,28 @@ windows = [1, 5, 10, 20]
 
 # Create static prediction data for each regressor, stock and window
 for ticker in ticker_filenames:
-    window_pred_data = []
     for regressor in regressors_scalers:
         for window in windows:
             X, y, X_last, date_arr = import_engineer_data(folder_path = ticker_filenames[ticker], window = window)
             y_pred, y_test, err, err_perc, mse, r2, adj_r2, y_pred_last = split_scale_train_predict(X, y, X_last, regressor = regressors_scalers[regressor][0], scaler = regressors_scalers[regressor][1])
-            window_pred_data.append([[ticker, regressor, window, y_pred, y_test, err, err_perc, y_pred_last, date_arr]])
-    # Save to file
-    with open('../data/pickles/' + ticker + '.pkl', 'wb') as file:
-        pickle.dump(window_pred_data, file)
+            date_arr = date_arr[len(date_arr)-len(y_test):]
+            window_pred_data = []
+            #window_pred_data.append([y_pred, y_test, err, err_perc, y_pred_last, date_arr])
+            window_pred_data.append(y_pred)
+            window_pred_data.append(y_test)
+            window_pred_data.append(y_pred_last)
+            window_pred_data.append([date_arr])
+            # Save to file
+            with open('../data/pickles/' + ticker + '_' + regressor + '_' + str(window) + '.pkl', 'wb') as file:
+                pickle.dump(window_pred_data, file)
+
+
+'''
+# Load pickle data
+ticker = 'MSFT'
+regressor = 'Ridge Regression'
+window = 1
+with open('../data/pickles/' + ticker + '_' + regressor + '_' + str(window) + '.pkl', 'rb') as file:
+        window_pred_data = pickle.load(file)
+window_pred_data
+'''
