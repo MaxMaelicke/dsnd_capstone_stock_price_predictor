@@ -7,6 +7,8 @@ import pickle
 import pandas as pd
 import numpy as np
 import datetime
+from datetime import datetime
+from datetime import timedelta  
 
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, PolynomialFeatures, StandardScaler
@@ -75,61 +77,21 @@ for filename in os.listdir('data'):
         ticker_filenames[filename[:-4]] = 'data/' + filename
         
 
-# Create prediction for per ticker and time window
-# Option 1: Import pre-compiled pickle data
-def get_window_pred_data(ticker):
+# Load pickel data per ticker, regressor and time window
+# pickle data (machine-learning results) are created with py_scripts/create_static_data.py
+def get_window_pred_data(ticker, regressor, window):
     '''
     Function to import data for app from pre-compiled static pickle data.
     Input:    ticker                  str; ticker of stock
+              regressor               str; regressor (from regressor_scalers)
+              window                  float; time window for predictions
     Output:   window_pred_data        list of arrays containing ticker, regressor, window, y_pred, y_test, err (error), err_perc (error in %), y_pred_last
-              window_pred_data_ind    dictionary of indexes for regressors in window_pred_data
     '''
-    with open('data/pickles/' + ticker + '.pkl', 'rb') as file:
-        window_pred_data = pickle.load(file)
+    with open('data/pickles/' + ticker + '_' + regressor + '_' + str(window) + '.pkl', 'rb') as file:
+            window_pred_data = pickle.load(file)
     
-    window_pred_data_ind = {}
-    for i in range(len(window_pred_data)):
-        if i > 0:
-            if window_pred_data[i][0][1] != window_pred_data[i-1][0][1]:
-                window_pred_data_ind[window_pred_data[i][0][1]] = i
-            else:
-                continue
-        else:
-            window_pred_data_ind[window_pred_data[i][0][1]] = i
+    return window_pred_data
     
-    return window_pred_data, window_pred_data_ind
-
-# Option 2: Run and optimize model on data
-# Create static prediction data for each regressor, stock and window
-#def get_window_pred_data(ticker, regressor_scalers, windows):
-#    '''
-#    Function to create window_pred_data which consists of arrays of actual (test) prices, predicted prices and errors. This function calls other functions for
-#    importing and preprocessing data,
-#    training and optimizing models,
-#    predicting with the appropriate model.
-#    Input:  ticker                  str; ticker of stock
-#            regressor               str; model regressor
-#            regressor_scalers       dict; matching regressors with scaler and GridSearchCV parameters
-#    Output: window_pred_data        list of arrays containing ticker, regressor, window, y_pred, y_test, err (error), err_perc (error in %), y_pred_last
-#            window_pred_data_ind    dictionary of indexes for regressors in window_pred_data
-#    '''
-#    window_pred_data = []
-#    for window in windows:
-#            X, y, X_last = import_engineer_data(folder_path = ticker_filenames[ticker], window = window)
-#            y_pred, y_test, err, err_perc, mse, r2, adj_r2, y_pred_last = split_scale_train_predict(X, y, X_last, regressor = regressor, scaler = regressors_scalers[regressor][1])
-#            window_pred_data.append([[ticker, regressor, window, y_pred, y_test, err, err_perc, y_pred_last]])
-#    window_pred_data_ind = {}
-#    for i in range(len(window_pred_data)):
-#    if i > 0:
-#        if window_pred_data[i][0][1] != window_pred_data[i-1][0][1]:
-#            window_pred_data_ind[window_pred_data[i][0][1]] = i
-#        else:
-#            continue
-#    else:
-#        window_pred_data_ind[window_pred_data[i][0][1]] = i
-#    
-#    return window_pred_data, window_pred_data_ind
-
 
 # Create site layout and graphs
 # Filters
@@ -161,11 +123,11 @@ controls = dbc.Card(
     ),
     dbc.FormGroup(
         [
-        dbc.Label('Show Error Information'),
+        dbc.Label('Show Error Line'),
         dbc.Col([
         daq.BooleanSwitch(
             id = 'error-switch',
-            on = 'True',
+            on = True,
             color = 'lightgreen'),
             ], md = 4,)
         ]
@@ -179,7 +141,6 @@ app.layout = dbc.Container([
         dbc.Col([
             html.Div([
                 html.H1('Stock Price Predictor'),
-                html.H5("Udacity's Data Scientist Nanodegree Capstone Project"),
                 html.H5('DO NOT USE FOR INVESTMENT DECISIONS - for educational purposes only', className='text-muted'),
                 html.H5('created with Dash by Plotly', className='text-muted'),
                 html.Hr()
@@ -189,193 +150,223 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col(controls, md = 2),
         dbc.Col([
-            dcc.Graph(id = 'line_chart')#, config = {'modeBarButtonsToRemove': ['lasso2d']}),
-            #dcc.Graph(id = 'histogram', config = {'modeBarButtonsToRemove': ['lasso2d']})
-            ], width = 'auto'
-            )
-        ], align = 'center')
-    ], fluid = 'True'
-    )
+                html.H4('Adjusted Close Predictions'),
+                dcc.Tabs(id = 'window-tab', value = '1', children = [
+                        dcc.Tab(label = '1-day window', value = '1', children = [
+                                dbc.Card(
+                                        dbc.CardBody([
+                                                dbc.Row(html.H5(id = 'card-header')),
+                                                dbc.Row([
+                                                        dcc.Graph(id = 'line_chart1', config = {'modeBarButtonsToRemove': ['lasso2d']}),
+                                                        dbc.Card(id = 'pred-card')
+                                                        ]),
+                                                dbc.Row(html.H6('Distribution of Errors in %')),
+                                                dbc.Row(dcc.Graph(id = 'histogram'))
+                                                    ])
+                                        )
+                                ]),
+                                        
+                        dcc.Tab(label = '5-day window', value = '5', children = [
+                                dbc.Card(
+                                        dbc.CardBody([
+                                                dbc.Row(html.H5(id = 'card-header5')),
+                                                dbc.Row([
+                                                        dcc.Graph(id = 'line_chart5', config = {'modeBarButtonsToRemove': ['lasso2d']}),
+                                                        dbc.Card(id = 'pred-card5')
+                                                        ]),
+                                                dbc.Row(html.H6('Distribution of Errors in %')),
+                                                dbc.Row(dcc.Graph(id = 'histogram5'))
+                                                    ])
+                                        )
+                                ]),
+                        dcc.Tab(label = '10-day window', value = '10', children = [
+                                dbc.Card(
+                                        dbc.CardBody([
+                                                dbc.Row(html.H5(id = 'card-header10')),
+                                                dbc.Row([
+                                                        dcc.Graph(id = 'line_chart10', config = {'modeBarButtonsToRemove': ['lasso2d']}),
+                                                        dbc.Card(id = 'pred-card10')
+                                                        ]),
+                                                dbc.Row(html.H6('Distribution of Errors in %')),
+                                                dbc.Row(dcc.Graph(id = 'histogram10'))
+                                                    ])
+                                        )
+                                ]),
+                        dcc.Tab(label = '20-day window', value = '20', children = [
+                                dbc.Card(
+                                        dbc.CardBody([
+                                                dbc.Row(html.H5(id = 'card-header20')),
+                                                dbc.Row([
+                                                        dcc.Graph(id = 'line_chart20', config = {'modeBarButtonsToRemove': ['lasso2d']}),
+                                                        dbc.Card(id = 'pred-card20')
+                                                        ]),
+                                                dbc.Row(html.H6('Distribution of Errors in %')),
+                                                dbc.Row(dcc.Graph(id = 'histogram20'))
+                                                    ])
+                                        )
+                                ]),
+                        
+                        ]),
+                html.Div([
+                            html.Hr(),
+                            dcc.Markdown('''
+                                         When evaluating the different models **Ridge Regression** performed best.  
+                                         The methodology, model comparison and source code can be accessed on my [Github project](https://github.com/CSSEGISandData/COVID-19).
+                                           
+                                         This project was conducted as Capstone project for my Data Scientist Nanodegree at [Udacity](https://www.udacity.com/).  
+                                         
+                                         If you want to learn more about me, please check out my  
+                                         * [Homepage](https://www.maelicke.net)
+                                         * [Github](https://github.com/MaxMaelicke)
+                                         * [LinkedIn](https://www.linkedin.com/in/max-maelicke-025a35137/)
+                                         * [Xing](https://www.xing.com/profile/Max_Maelicke).
+                                         ''')
+                            ])
+                ])
+        ])
+    ], fluid = 'True')
 
 
 # Callbacks (Interactive inputs for graphs)
-@app.callback([
-        Output('line_chart', 'figure'),
-        #Output('histogram', 'figure')
-        ], [
+@app.callback(
+        [# Output 1-day window
+        Output('card-header', 'children'),
+        Output('line_chart1', 'figure'),
+        Output('pred-card', 'children'),
+        Output('histogram', 'figure'),
+        # Output 5-day window
+        Output('card-header5', 'children'),
+        Output('line_chart5', 'figure'),
+        Output('pred-card5', 'children'),
+        Output('histogram5', 'figure'),
+        # Output 10-day window
+        Output('card-header10', 'children'),
+        Output('line_chart10', 'figure'),
+        Output('pred-card10', 'children'),
+        Output('histogram10', 'figure'),
+        # Output 20-day window
+        Output('card-header20', 'children'),
+        Output('line_chart20', 'figure'),
+        Output('pred-card20', 'children'),
+        Output('histogram20', 'figure'),
+        ],
+        [
         Input('stock-dropdown', 'value'),
         Input('regressor-dropdown', 'value'),
-        Input('error-switch', 'on')
+        Input('error-switch', 'on'),
+        Input('window-tab', 'value')
         ]
         )
-
-
+    
 # Graph Generation
-def update_graph(stock_dropdown, regressor_dropdown, on):
+def update_graph(stock_dropdown, regressor_dropdown, on, window):
     '''
     Inputs:  stock_dropdown        str; filtered stock ticker
              regressor_dropdown    str; filtered regressor
              histogram_switch      bool; show/not show histogram
     Outputs: line_chart            plotly figure for comparing actual vs. predicted prices
-             forecast_card         dash card showing predicted price for window
-             histogram             plotly figure showing prediction errors
-             error_card            dash card showing metrics about prediction errors
+             histogram             plotly figure; showing prediction errors
+             card_header           str; header for window-card
+             card_info_header      str; header for prediction info card
+             card_info             str; prediction information for card
     '''
-    # Filter data
-    # window_pred_data columns = ticker, regressor, window, y_pred, y_test, err, err_perc, y_pred_last, date_arr
-    window_pred_data, window_pred_data_ind = get_window_pred_data(stock_dropdown)
-    window = 0
-    idx = window_pred_data_ind[regressor_dropdown]
+    # Load & prepare data for graphing
+    # window_pred_data columns = y_pred, y_test, y_pred_last, date_arr
+    window_pred_data = get_window_pred_data(stock_dropdown, regressor_dropdown, window)
     
-    y_test = window_pred_data[idx][0][4].tolist()
-    y_test = [element[0] for element in y_test]
+    # y_pred array structure is different for three regressors
+    if regressor_dropdown in ['Support Vector Regression', 'LASSO Regression', 'Elastic Net Regression']:
+        y_pred = window_pred_data[0].tolist()
+        y_pred_last = window_pred_data[2].tolist()[0]
+    else:
+        y_pred = [element[0] for element in window_pred_data[0].tolist()]
+        y_pred_last = window_pred_data[2].tolist()[0][0]
     
-    y_pred = window_pred_data[idx][0][3].tolist()
-    y_pred = [element[0] for element in y_pred]
+    y_test = [element[0] for element in window_pred_data[1].tolist()]
+    x_dates = [str(element) for element in window_pred_data[3][0]]
     
-    x_dates = window_pred_data[idx][0][8].tolist()
+    # Calculate date for future prediction (window is only working days)
+    if int(window) > 1:
+        window_delta = int(window) * 2
+        window_delta = window_delta + 2 * (window_delta // 5)
+    else:
+        window_delta = int(window)
+    future_pred_date = datetime.strptime(x_dates[-1][:10], '%Y-%m-%d') + timedelta(days=window_delta)
+    future_pred_date = datetime.date(future_pred_date)
     
-    err = window_pred_data[idx][0][5].tolist()
-    err = [element[0] for element in err]
+    zip_err = zip(y_pred, y_test)
+    err = [pred - test for pred, test in zip_err]
+    
+    zip_err_p = zip(err, y_test)
+    err_perc = [err / test for err, test in zip_err_p]
+    
+    #err_perc = err / y_test
+    err_mean = sum(err) / len(err)
+    err_min = min(err)
+    err_max = max(err)
+    err_5_range = np.count_nonzero((np.array(err_perc) <= 0.05) & (np.array(err_perc) >= -0.05)) / len(err_perc)
     
     # Line Chart
     line_chart = go.Figure()
     line_chart.add_trace(go.Scatter(
             x = x_dates,
             y = y_test,
-            name = 'Actual Adj. Close Price',
+            name = 'Actual',
             mode = 'lines',
             line = dict(color = 'green')))
-    
     line_chart.add_trace(go.Scatter(
             x = x_dates,
             y = y_pred,
-            name = 'Predicted Adj. Close Price',
+            name = 'Predicted',
             mode = 'lines',
-            line = dict(color = 'orange')))
+            line = dict(color = 'orange')))        
+           
+    line_chart.update_layout(
+            autosize = False,
+            height = 600,
+            width = 800)
     
-    # Error-switch
+    # Error switch
     if on == True:
+        # Line Chart
         line_chart.add_trace(go.Scatter(
-                x = x_dates,
-                y = err,
-                name = 'Error abs.',
-                mode = 'lines',
-                line = dict(color = 'red')))
+            x = x_dates,
+            y = err,
+            name = 'Error abs.',
+            mode = 'lines',
+            line = dict(color = 'red')))
+        
+    # Histogram
+    histogram = go.Figure()
+    histogram.add_trace(go.Histogram(
+            x = err_perc,
+            histnorm = 'probability'))
+    histogram.update_layout(autosize = False,
+        height = 600,
+        width = 800)
     
-    #line_chart.show()
+    # Card Output
+    card_header = str(stock_dropdown) + ' | ' + str(regressor_dropdown)
+    card_info_header = 'Prediction for ' + str(future_pred_date)
+    card_info_1 = 'Adj. Close = ' + '{:.2f}'.format(y_pred_last)
+    card_info_2 = 'Average Error = ' + '{:.2f}'.format(err_mean)
+    card_info_3 = 'Min Error = ' + '{:.2f}'.format(err_min)
+    card_info_4 = 'Max Error = ' + '{:.2f}'.format(err_max)
+    card_info_5 = 'Errors within +/- 5% = ' + '{:.2%}'.format(err_5_range)
     
-    return [line_chart]
-'''
-# Import stock datasets
-df_MSFT = pd.read_csv('data/MSFT_5Y.csv')
-df_MSFT['Stock'] = 'MSFT'
+    pred_card = dbc.CardBody([
+            html.H5(card_info_header, className = 'card-title'),
+            html.P(card_info_1, className = 'card-text'),
+            html.Hr(),
+            html.P(card_info_2, className = 'card-text'),
+            html.P(card_info_3, className = 'card-text'),
+            html.P(card_info_4, className = 'card-text'),
+            html.P(card_info_5, className = 'card-text')
+            ])
+    
+    # Output    1-day window                              5-day window                                                10-day window                                  20-day window
+    return card_header, line_chart, pred_card, histogram, card_header, line_chart, pred_card, histogram, card_header, line_chart, pred_card, histogram, card_header, line_chart, pred_card, histogram
 
-df_GOOG = pd.read_csv('data/GOOG_5Y.csv')
-df_GOOG['Stock'] = 'GOOG'
-
-df_AAPL = pd.read_csv('data/AAPL_5Y.csv')
-df_AAPL['Stock'] = 'AAPL'
-
-df_SPY = pd.read_csv('data/SPY_5Y.csv')
-df_SPY['Stock'] = 'SPY'
-
-# Merge datasets
-frames = [df_MSFT, df_GOOG, df_AAPL, df_SPY]
-df = pd.concat(frames)
-
-app.layout = html.Div(className='col-12',
-             children=[
-                     html.Div(id='middle-info',
-                              className='mt-3',
-                              children=[
-                                      html.H3('Stock Price Predictor'),
-                                      html.H5('- DO NOT USE FOR INVESTMENT DECISIONS - for educational purposes only', className='text-muted'),
-                                      html.H5('created with Dash by Plotly', className='text-muted'),
-                                      ]
-                              ),
-
-    dcc.Dropdown(
-        id='stock-ticker-input',
-        options=[{'label': s[0], 'value': str(s[1])}
-                 for s in zip(df.Stock.unique(), df.Stock.unique())],
-        #value=['YHOO', 'GOOGL', 'MSFT'],
-        multi=True
-    ),
-
-    # Option 1 - 1 graph per row
-    #html.Div(id='graphs')
-
-    # Option 2 - 2 graphs per row
-    html.Div(#id='graphs',
-             className='row mb-6',
-             children=[
-                     html.Div(id='graphs',
-                              className='col-6')
-                     ]
-             )
-
-], #className="container")
-)
-
-def bbands(price, window_size=10, num_of_std=5):
-    rolling_mean = price.rolling(window=window_size).mean()
-    rolling_std  = price.rolling(window=window_size).std()
-    upper_band = rolling_mean + (rolling_std*num_of_std)
-    lower_band = rolling_mean - (rolling_std*num_of_std)
-    return rolling_mean, upper_band, lower_band
-
-@app.callback(
-    dash.dependencies.Output('graphs','children'),
-    [dash.dependencies.Input('stock-ticker-input', 'value')])
-def update_graph(tickers):
-    graphs = []
-
-    if not tickers:
-        graphs.append(html.H3(
-            "Select a stock ticker.",
-            style={'marginTop': 20, 'marginBottom': 20}
-        ))
-    else:
-        for i, ticker in enumerate(tickers):
-
-            dff = df[df['Stock'] == ticker]
-
-            candlestick = {
-                'x': dff['Date'],
-                'open': dff['Open'],
-                'high': dff['High'],
-                'low': dff['Low'],
-                'close': dff['Close'],
-                'type': 'candlestick',
-                'name': ticker,
-                'legendgroup': ticker,
-                'increasing': {'line': {'color': colorscale[0]}},
-                'decreasing': {'line': {'color': colorscale[1]}}
-            }
-            bb_bands = bbands(dff.Close)
-            bollinger_traces = [{
-                'x': dff['Date'], 'y': y,
-                'type': 'scatter', 'mode': 'lines',
-                'line': {'width': 1, 'color': colorscale[(i*2) % len(colorscale)]},
-                'hoverinfo': 'none',
-                'legendgroup': ticker,
-                'showlegend': True if i == 0 else False,
-                'name': '{} - bollinger bands'.format(ticker)
-            } for i, y in enumerate(bb_bands)]
-            graphs.append(dcc.Graph(
-                id=ticker,
-                figure={
-                    'data': [candlestick] + bollinger_traces,
-                    'layout': {
-                        'margin': {'b': 0, 'r': 10, 'l': 60, 't': 0},
-                        'legend': {'x': 0}
-                    }
-                }
-            ))
-
-    return graphs
-'''
 
 if __name__ == '__main__':
     app.run_server(debug=True)
