@@ -43,11 +43,11 @@ Run python script app.py.
 
 Visit http://127.0.0.1:8050 to see the Dash app.  
 
-*Optional - for production server:*
-Add function/script to automatically retrieve updated stock data.
-Setup automatic job to run 'create_static_data.py' when new stock data is available
-Setup Gunicorn/WSGI sock (e.g. systemd service) to point to Dash app.
-Setup webserver and link to app location.
+*Optional - for production server:*  
+Add function/script to automatically retrieve updated stock data.  
+Setup automatic job to run 'create_static_data.py' when new stock data is available.  
+Setup Gunicorn/WSGI sock (e.g. systemd service) to point to Dash app.  
+Setup webserver and link to app location.  
 
 
 ## Prerequisites & Used libraries
